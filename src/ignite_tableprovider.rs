@@ -18,21 +18,27 @@ pub struct IgniteTable {
 impl IgniteTable {
     pub fn new(cfg: CacheConfiguration) -> anyhow::Result<IgniteTable> {
         let mut fields: Vec<Field> = vec![];
-        for entity in cfg.query_entities.ok_or(anyhow!("No query entities!"))?.iter() {
-            println!("entity {:?}", entity.table);
+        if let Some(ref entities) = cfg.query_entities {
+            let len = entities.len();
+            if len > 1 {
+                return Err(anyhow!("More than one query entity!"))
+            }
+            let entity = entities.iter().next().ok_or(anyhow!("No query entities!"))?;
             for field in entity.query_fields.iter() {
                 println!("   field {} {}", field.name, field.type_name);
                 let field_type = match field.type_name.as_str() {
                     "java.lang.Integer" => DataType::Int32,
-                    _ => todo!("Type not supported: {}", field.type_name),
+                    "java.lang.String" => DataType::Utf8,
+                    _ => Err(anyhow!("Type not supported: {}", field.type_name))?
                 };
                 let field = Field::new(field.name.as_str(), field_type, !field.not_null_constraint);
                 fields.push(field);
             }
             let schema = SchemaRef::new(Schema::new(fields));
-            return Ok(IgniteTable {cfg,schema});
+            Ok(Self { cfg, schema })
+        } else {
+            Err(anyhow!("No query entities!"))
         }
-        todo!("No query entities found!");
     }
 }
 
@@ -51,6 +57,6 @@ impl TableProvider for IgniteTable {
     }
 
     async fn scan(&self, projection: &Option<Vec<usize>>, filters: &[Expr], limit: Option<usize>) -> crate::Result<Arc<dyn ExecutionPlan>> {
-        Ok(Arc::new(IgniteExec::new(self.schema())))
+        Ok(Arc::new(IgniteExec::new(projection, self.schema())))
     }
 }
