@@ -24,15 +24,19 @@ async fn main() -> anyhow::Result<()> {
     }
     let name = "SQL_PUBLIC_REGION";
     let cfg = ignite.get_cache_config(name)?;
-    let table_name = TableReference::Full { catalog: "datafusion", schema: "public", table: name };
+    let table_name = TableReference::Full { catalog: "datafusion", schema: "public", table: "sql_public_region" };
     let provider = Arc::new(IgniteTable::new(cfg)?);
     ctx.register_table(table_name, provider)?;
 
     ctx.register_csv("example", "tests/example.csv", CsvReadOptions::new()).await?;
 
+    for table in ctx.tables().unwrap().iter() {
+        println!("{}", table)
+    }
+
     // create a plan
     // let df = ctx.sql("SELECT a, MIN(b) FROM example GROUP BY a LIMIT 100").await?;
-    let df = ctx.sql("SELECT * from SQL_PUBLIC_REGION").await?;
+    let df = ctx.sql("SELECT * from sql_public_region").await?;
 
     // execute the plan
     let results: Vec<RecordBatch> = df.collect().await?;
@@ -42,11 +46,10 @@ async fn main() -> anyhow::Result<()> {
         .to_string();
 
     let expected = vec![
-        "+---+----------------+",
-        "| a | MIN(example.b) |",
-        "+---+----------------+",
-        "| 1 | 2              |",
-        "+---+----------------+"
+        "+-------------+--------+-----------+",
+        "| R_REGIONKEY | R_NAME | R_COMMENT |",
+        "+-------------+--------+-----------+",
+        "+-------------+--------+-----------+",
     ];
 
     assert_eq!(pretty_results.trim().lines().collect::<Vec<_>>(), expected);
