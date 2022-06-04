@@ -12,13 +12,13 @@ use ignite_rs::Client;
 use crate::ignite_exec::IgniteExec;
 
 pub struct IgniteTable {
-    client: Arc<Mutex<Client>>,
+    client: Client,
     cfg: CacheConfiguration,
     schema: SchemaRef,
 }
 
 impl IgniteTable {
-    pub fn new(client: Arc<Mutex<Client>>, cfg: CacheConfiguration) -> anyhow::Result<IgniteTable> {
+    pub fn new(client: Client, cfg: CacheConfiguration) -> anyhow::Result<IgniteTable> {
         let mut fields: Vec<Field> = vec![];
         if let Some(ref entities) = cfg.query_entities {
             let len = entities.len();

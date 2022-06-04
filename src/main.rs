@@ -18,13 +18,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Add tables from ignite
     let client_config = ClientConfig::new("localhost:10800");
-    let mut ignite = Arc::new(Mutex::new(ignite_rs::new_client(client_config)?));
+    let mut ignite = ignite_rs::new_client(client_config)?;
     // let names = ignite.get_cache_names()?;
     // for name in names.iter() {
     //     println!("Got: {}", name);
     // }
     let name = "SQL_PUBLIC_REGION";
-    let cfg = ignite.get_mut()?.get_cache_config(name)?;
+    let cfg = ignite.get_cache_config(name)?;
     let table_name = TableReference::Full { catalog: "datafusion", schema: "public", table: "sql_public_region" };
     let provider = Arc::new(IgniteTable::new(ignite.clone(), cfg)?);
     ctx.register_table(table_name, provider)?;

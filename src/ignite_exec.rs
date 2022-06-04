@@ -14,14 +14,14 @@ use crate::arrow::datatypes::SchemaRef;
 use crate::dynamic_type::DynamicIgniteType;
 
 pub struct IgniteExec {
-    client: Arc<Mutex<Client>>,
+    client: Client,
     table_name: String,
     projected_schema: SchemaRef,
 }
 
 impl IgniteExec {
     pub fn new(
-        client: Arc<Mutex<Client>>,
+        client: Client,
         table_name: &str,
         projections: &Option<Vec<usize>>,
         schema: SchemaRef,
@@ -70,8 +70,7 @@ impl ExecutionPlan for IgniteExec {
         let mut _id_array = UInt8Builder::new(0);
         let mut _account_array = UInt64Builder::new(0);
 
-        let cache = self.client.get_mut()
-            .map_err(|e| DataFusionError::Execution(e.to_string()))?
+        let cache = self.client
             .get_or_create_cache::<DynamicIgniteType, DynamicIgniteType>(&self.table_name)
             .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
