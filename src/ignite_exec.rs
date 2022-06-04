@@ -70,7 +70,8 @@ impl ExecutionPlan for IgniteExec {
         let mut _id_array = UInt8Builder::new(0);
         let mut _account_array = UInt64Builder::new(0);
 
-        let cache = self.client
+        let mut client = self.client.clone();
+        let cache = client
             .get_or_create_cache::<DynamicIgniteType, DynamicIgniteType>(&self.table_name)
             .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
