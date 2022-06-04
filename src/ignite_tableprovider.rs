@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use anyhow::anyhow;
 use datafusion::datasource::{TableProvider, TableType};
 use datafusion::physical_plan::ExecutionPlan;

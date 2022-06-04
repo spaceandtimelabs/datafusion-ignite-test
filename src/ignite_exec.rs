@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use datafusion::arrow::array::{ArrayRef, Int32Array, StringArray, UInt64Builder, UInt8Builder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::arrow::record_batch::RecordBatch;
@@ -75,6 +75,14 @@ impl ExecutionPlan for IgniteExec {
             .get_or_create_cache::<DynamicIgniteType, DynamicIgniteType>(&self.table_name)
             .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
+        if let Some(ref entities) = cache.cfg.query_entities {
+            if let Some(entity) = entities.get(0) {
+                println!("entity={:?}", entity);
+                for field in entity.query_fields.iter() {
+                    println!("field={:?}", field);
+                }
+            }
+        }
         let records = cache.query_scan(1024)
             .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
         for _record in records {

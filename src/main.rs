@@ -2,7 +2,7 @@ mod ignite_tableprovider;
 mod ignite_exec;
 mod dynamic_type;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use datafusion::arrow;
 use datafusion::prelude::*;
 use datafusion::error::Result;
