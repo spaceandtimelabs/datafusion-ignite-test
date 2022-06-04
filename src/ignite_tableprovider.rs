@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use anyhow::anyhow;
 use datafusion::datasource::{TableProvider, TableType};
 use datafusion::physical_plan::ExecutionPlan;
@@ -8,15 +8,17 @@ use crate::Expr;
 use async_trait::async_trait;
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use ignite_rs::cache::CacheConfiguration;
+use ignite_rs::Client;
 use crate::ignite_exec::IgniteExec;
 
 pub struct IgniteTable {
+    client: Arc<Mutex<Client>>,
     cfg: CacheConfiguration,
     schema: SchemaRef,
 }
 
 impl IgniteTable {
-    pub fn new(cfg: CacheConfiguration) -> anyhow::Result<IgniteTable> {
+    pub fn new(client: Arc<Mutex<Client>>, cfg: CacheConfiguration) -> anyhow::Result<IgniteTable> {
         let mut fields: Vec<Field> = vec![];
         if let Some(ref entities) = cfg.query_entities {
             let len = entities.len();
@@ -35,7 +37,7 @@ impl IgniteTable {
                 fields.push(field);
             }
             let schema = SchemaRef::new(Schema::new(fields));
-            Ok(Self { cfg, schema })
+            Ok(Self { client, cfg, schema })
         } else {
             Err(anyhow!("No query entities!"))
         }
@@ -56,7 +58,16 @@ impl TableProvider for IgniteTable {
         todo!()
     }
 
-    async fn scan(&self, projection: &Option<Vec<usize>>, filters: &[Expr], limit: Option<usize>) -> crate::Result<Arc<dyn ExecutionPlan>> {
-        Ok(Arc::new(IgniteExec::new(projection, self.schema())))
+    async fn scan(&self,
+                  projection: &Option<Vec<usize>>,
+                  _filters: &[Expr],
+                  _limit: Option<usize>
+    ) -> crate::Result<Arc<dyn ExecutionPlan>> {
+        Ok(Arc::new(IgniteExec::new(
+            self.client.clone(),
+            self.cfg.name.as_str(),
+            projection,
+            self.schema(),
+        )))
     }
 }

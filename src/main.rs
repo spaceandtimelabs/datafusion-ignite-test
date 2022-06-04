@@ -1,7 +1,8 @@
 mod ignite_tableprovider;
 mod ignite_exec;
+mod dynamic_type;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use datafusion::arrow;
 use datafusion::prelude::*;
 use datafusion::error::Result;
@@ -17,22 +18,22 @@ async fn main() -> anyhow::Result<()> {
 
     // Add tables from ignite
     let client_config = ClientConfig::new("localhost:10800");
-    let mut ignite = ignite_rs::new_client(client_config)?;
-    let names = ignite.get_cache_names()?;
-    for name in names.iter() {
-        println!("Got: {}", name);
-    }
+    let mut ignite = Arc::new(Mutex::new(ignite_rs::new_client(client_config)?));
+    // let names = ignite.get_cache_names()?;
+    // for name in names.iter() {
+    //     println!("Got: {}", name);
+    // }
     let name = "SQL_PUBLIC_REGION";
-    let cfg = ignite.get_cache_config(name)?;
+    let cfg = ignite.get_mut()?.get_cache_config(name)?;
     let table_name = TableReference::Full { catalog: "datafusion", schema: "public", table: "sql_public_region" };
-    let provider = Arc::new(IgniteTable::new(cfg)?);
+    let provider = Arc::new(IgniteTable::new(ignite.clone(), cfg)?);
     ctx.register_table(table_name, provider)?;
 
     ctx.register_csv("example", "tests/example.csv", CsvReadOptions::new()).await?;
 
-    for table in ctx.tables().unwrap().iter() {
-        println!("{}", table)
-    }
+    // for table in ctx.tables().unwrap().iter() {
+    //     println!("{}", table)
+    // }
 
     // create a plan
     // let df = ctx.sql("SELECT a, MIN(b) FROM example GROUP BY a LIMIT 100").await?;

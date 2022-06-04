@@ -1,33 +1,43 @@
 use std::any::Any;
-use std::fmt::{Debug};
-use std::sync::Arc;
-use anyhow::anyhow;
-use datafusion::arrow::array::{ArrayRef, Int32Array, Int32Builder, StringArray, UInt64Builder, UInt8Builder};
+use std::fmt::{Debug, Formatter};
+use std::sync::{Arc, Mutex};
+use datafusion::arrow::array::{ArrayRef, Int32Array, StringArray, UInt64Builder, UInt8Builder};
 use datafusion::arrow::datatypes::DataType;
-use datafusion::arrow::ipc::Utf8Builder;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::error::DataFusionError;
 use datafusion::execution::context::TaskContext;
 use datafusion::physical_expr::PhysicalSortExpr;
 use datafusion::physical_plan::{ExecutionPlan, Partitioning, project_schema, SendableRecordBatchStream, Statistics};
 use datafusion::physical_plan::memory::MemoryStream;
+use ignite_rs::{Client, Ignite};
 use crate::arrow::datatypes::SchemaRef;
-use crate::col;
+use crate::dynamic_type::DynamicIgniteType;
 
-#[derive(Debug)]
 pub struct IgniteExec {
+    client: Arc<Mutex<Client>>,
+    table_name: String,
     projected_schema: SchemaRef,
 }
 
 impl IgniteExec {
     pub fn new(
+        client: Arc<Mutex<Client>>,
+        table_name: &str,
         projections: &Option<Vec<usize>>,
         schema: SchemaRef,
     ) -> IgniteExec {
         let projected_schema = project_schema(&schema, projections.as_ref()).unwrap();
         Self {
+            client,
+            table_name: table_name.to_string(),
             projected_schema,
         }
+    }
+}
+
+impl Debug for IgniteExec {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
     }
 }
 
@@ -52,13 +62,24 @@ impl ExecutionPlan for IgniteExec {
         vec![]
     }
 
-    fn with_new_children(self: Arc<Self>, children: Vec<Arc<dyn ExecutionPlan>>) -> crate::Result<Arc<dyn ExecutionPlan>> {
+    fn with_new_children(self: Arc<Self>, _children: Vec<Arc<dyn ExecutionPlan>>) -> crate::Result<Arc<dyn ExecutionPlan>> {
         todo!()
     }
 
-    fn execute(&self, partition: usize, context: Arc<TaskContext>) -> crate::Result<SendableRecordBatchStream> {
-        let mut id_array = UInt8Builder::new(0);
-        let mut account_array = UInt64Builder::new(0);
+    fn execute(&self, _partition: usize, _context: Arc<TaskContext>) -> crate::Result<SendableRecordBatchStream> {
+        let mut _id_array = UInt8Builder::new(0);
+        let mut _account_array = UInt64Builder::new(0);
+
+        let cache = self.client.get_mut()
+            .map_err(|e| DataFusionError::Execution(e.to_string()))?
+            .get_or_create_cache::<DynamicIgniteType, DynamicIgniteType>(&self.table_name)
+            .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
+
+        let records = cache.query_scan(1024)
+            .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
+        for _record in records {
+            println!("record!");
+        }
 
         let mut columns: Vec<ArrayRef> = vec![];
         for field in self.projected_schema.fields().iter() {
