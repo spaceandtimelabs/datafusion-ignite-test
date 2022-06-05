@@ -83,11 +83,15 @@ impl ExecutionPlan for IgniteExec {
                 }
             }
         }
-        let records = cache.query_scan(1024)
-            .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
-        for _record in records {
-            println!("record!");
-        }
+        cache.query_scan_dyn(1024, &mut |reader, count| {
+            let mut pairs: Vec<(Option<K>, Option<V>)> = Vec::new();
+            for _ in 0..count {
+                let key = K::read(reader)?;
+                let val = V::read(reader)?;
+                pairs.push((key, val));
+            }
+            Ok(())
+        }).map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
         let mut columns: Vec<ArrayRef> = vec![];
         for field in self.projected_schema.fields().iter() {
