@@ -10,6 +10,7 @@ use datafusion::physical_expr::PhysicalSortExpr;
 use datafusion::physical_plan::{ExecutionPlan, Partitioning, project_schema, SendableRecordBatchStream, Statistics};
 use datafusion::physical_plan::memory::MemoryStream;
 use ignite_rs::{Client, Ignite};
+use ignite_rs::protocol::{FLAG_COMPACT_FOOTER, FLAG_HAS_SCHEMA, FLAG_OFFSET_ONE_BYTE, read_i32, read_string, read_u16, read_u8, read_wrapped_data};
 use crate::arrow::datatypes::SchemaRef;
 use crate::dynamic_type::DynamicIgniteType;
 
@@ -84,12 +85,51 @@ impl ExecutionPlan for IgniteExec {
             }
         }
         cache.query_scan_dyn(1024, &mut |reader, count| {
-            let mut pairs: Vec<(Option<K>, Option<V>)> = Vec::new();
-            for _ in 0..count {
-                let key = K::read(reader)?;
-                let val = V::read(reader)?;
-                pairs.push((key, val));
+            // key
+            let key_type_code = read_u8(reader)?; // 3 = i32
+            let region_key = read_i32(reader)?; // i32
+
+            // value
+            let val_type_code = read_u8(reader)?; // 27 = WrappedData
+            let wrapped_len = read_i32(reader)?;
+
+            let val_type = read_u8(reader)?; // 103 = Complex object
+            let ver = read_u8(reader)?; // 1
+            let flags = read_u16(reader)?; // 43
+            let type_id = read_i32(reader)?;
+            let hash_code = read_i32(reader)?;
+            let complex_obj_len = read_i32(reader)?; // 157
+            let schema_id = read_i32(reader)?;
+            let t2 = read_i32(reader)?; // 155
+            
+            let t3 = read_u8(reader)?; // 9 = Null
+            let name = read_string(reader)?;
+            println!("{} {}", name.len(), name);
+
+            let t5 = read_u8(reader)?; // 9 = Null
+            let comment = read_string(reader)?;
+            println!("{} {}", comment.len(), comment);
+
+            // Footer / schema
+            if flags & FLAG_HAS_SCHEMA != 0 {
+                if flags & FLAG_COMPACT_FOOTER != 0 {
+                    if flags & FLAG_OFFSET_ONE_BYTE != 0 {
+                        let field_count = 2;
+                        for _ in 0..field_count {
+                            let _ = read_u8(reader)?;
+                        }
+                    } else {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                }
+            } else {
+                // no schema, nothing to do
             }
+            
+            let wrapped_offset = read_i32(reader)?;
+
             Ok(())
         }).map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
