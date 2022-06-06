@@ -10,7 +10,9 @@ use datafusion::physical_expr::PhysicalSortExpr;
 use datafusion::physical_plan::{ExecutionPlan, Partitioning, project_schema, SendableRecordBatchStream, Statistics};
 use datafusion::physical_plan::memory::MemoryStream;
 use ignite_rs::{Client, Ignite};
-use ignite_rs::protocol::{FLAG_COMPACT_FOOTER, FLAG_HAS_SCHEMA, FLAG_OFFSET_ONE_BYTE, read_i32, read_string, read_u16, read_u8, read_wrapped_data};
+use ignite_rs::cache::QueryEntity;
+use ignite_rs::error::IgniteError;
+use ignite_rs::protocol::{FLAG_COMPACT_FOOTER, FLAG_HAS_SCHEMA, FLAG_OFFSET_ONE_BYTE, read_i32, read_string, read_u16, read_u8, read_wrapped_data, TypeCode};
 use crate::arrow::datatypes::SchemaRef;
 use crate::dynamic_type::DynamicIgniteType;
 
@@ -76,18 +78,32 @@ impl ExecutionPlan for IgniteExec {
             .get_or_create_cache::<DynamicIgniteType, DynamicIgniteType>(&self.table_name)
             .map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
-        if let Some(ref entities) = cache.cfg.query_entities {
-            if let Some(entity) = entities.get(0) {
-                println!("entity={:?}", entity);
-                for field in entity.query_fields.iter() {
-                    println!("field={:?}", field);
-                }
+        let entity = (|entities: &Option<Vec<QueryEntity>>| -> crate::Result<QueryEntity> {
+            let entities = entities.as_ref()
+                .ok_or(DataFusionError::Internal("No entities!".to_string()))?;
+            if entities.len() > 1 {
+                Err(DataFusionError::Internal("More than one entity!".to_string()))?;
             }
+            let entity = entities.get(0)
+                .ok_or(DataFusionError::Internal("No entities!".to_string()))?;
+            Ok(entity.clone())
+        })(&cache.cfg.query_entities)?;
+        for field in entity.query_fields.iter() {
+            println!("field={:?}", field);
         }
+
         cache.query_scan_dyn(1024, &mut |reader, count| {
             // key
-            let key_type_code = read_u8(reader)?; // 3 = i32
-            let region_key = read_i32(reader)?; // i32
+            match entity.key_type.as_str() {
+                "java.lang.Int" => {
+                    let key_type_code = read_u8(reader)?; // 3 = i32
+                    if TypeCode::try_from(key_type_code)? != TypeCode::Int {
+                        Err(IgniteError::from("Invalid type!"))?
+                    }
+                    let region_key = read_i32(reader)?; // i32
+                },
+                _ => Err(IgniteError::from("Invalid type!"))?
+            }
 
             // value
             let val_type_code = read_u8(reader)?; // 27 = WrappedData
