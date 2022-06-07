@@ -1,8 +1,7 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
-use datafusion::arrow::array::{ArrayBuilder, ArrayRef, Int32Array, StringArray, StringBuilder};
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::array::{ArrayBuilder, ArrayRef, Int32Array, StringBuilder};
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::error::DataFusionError;
 use datafusion::execution::context::TaskContext;
@@ -89,7 +88,7 @@ impl ExecutionPlan for IgniteExec {
             Ok(entity.clone())
         })(&cache.cfg.query_entities)?;
 
-        let mut columns: Arc<Mutex<Vec<Box<dyn ArrayBuilder>>>> = Arc::new(Mutex::new(vec![]));
+        let columns: Arc<Mutex<Vec<Box<dyn ArrayBuilder>>>> = Arc::new(Mutex::new(vec![]));
         cache.query_scan_dyn(1024, &mut |reader, count| {
 
             // allocate columns
@@ -117,8 +116,8 @@ impl ExecutionPlan for IgniteExec {
                         match TypeCode::try_from(key_type_code)? {
                             TypeCode::Int => {
                                 let mut cols = columns.lock().unwrap();
-                                let mut sb = cols.get_mut(0).unwrap().as_mut();
-                                let mut sb = sb.as_any_mut().downcast_mut::<PrimitiveBuilder<Int32Type>>().unwrap();
+                                let sb = cols.get_mut(0).unwrap().as_mut();
+                                let sb = sb.as_any_mut().downcast_mut::<PrimitiveBuilder<Int32Type>>().unwrap();
                                 let v = read_i32(reader)?;
                                 sb.append_value(v).unwrap();
                             },
@@ -132,17 +131,25 @@ impl ExecutionPlan for IgniteExec {
                 }
 
                 // value
-                read_wrapped_data_dyn(reader, &mut |reader, len| {
-                    read_complex_obj_dyn(reader, &mut |reader, len| {
-                        let t2 = read_i32(reader)?; // 155
+                read_wrapped_data_dyn(reader, &mut |reader, _len| {
+                    read_complex_obj_dyn(reader, &mut |reader, _len| {
+                        let _len = read_i32(reader)?;
 
-                        let t3 = read_u8(reader)?; // 9 = Null
-                        let name = read_string(reader)?;
-                        println!("{} {}", name.len(), name);
+                        let mut cols = columns.lock().unwrap();
+                        for idx in 1..entity.query_fields.len() {
+                            let col = cols.get_mut(idx).unwrap();
+                            let _name = read_u8(reader)?; // col_name? always null
+                            let field = entity.query_fields.get(idx).unwrap();
+                            match field.type_name.as_str() {
+                                "java.lang.String" => {
+                                    let ar = col.as_any_mut().downcast_mut::<StringBuilder>().unwrap();
+                                    let v = read_string(reader)?;
+                                    ar.append_value(v).unwrap();
+                                }
+                                _ => todo!("Unknown field type: {}", field.type_name)
+                            }
+                        }
 
-                        let t5 = read_u8(reader)?; // 9 = Null
-                        let comment = read_string(reader)?;
-                        println!("{} {}", comment.len(), comment);
                         Ok(())
                     })
                 })?;
@@ -151,20 +158,13 @@ impl ExecutionPlan for IgniteExec {
             Ok(())
         }).map_err(|e| DataFusionError::Execution(e.to_string()) )?;
 
-        let mut columns: Vec<ArrayRef> = vec![];
-        for field in self.projected_schema.fields().iter() {
-            let column: ArrayRef = match field.data_type() {
-                DataType::Int32 => Arc::new(Int32Array::from(Vec::<i32>::new())),
-                DataType::Utf8 => Arc::new(StringArray::from(Vec::<String>::new())),
-                _ => return Err(DataFusionError::NotImplemented(format!("Unknown type: {}", field.data_type())))
-            };
-            columns.push(column);
-        }
+        let mut vals = columns.lock().unwrap();
+        let cols: Vec<ArrayRef> = vals.iter_mut().map(|it| it.finish()).collect();
 
         Ok(Box::pin(MemoryStream::try_new(
             vec![RecordBatch::try_new(
                 self.projected_schema.clone(),
-                columns,
+                cols,
             )?],
             self.schema(),
             None,

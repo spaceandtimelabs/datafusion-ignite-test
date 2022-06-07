@@ -46,6 +46,8 @@ async fn main() -> anyhow::Result<()> {
     let pretty_results = arrow::util::pretty::pretty_format_batches(&results)?
         .to_string();
 
+    print!("{}", pretty_results);
+    
     let expected = vec![
         "+-------------+--------+-----------+",
         "| R_REGIONKEY | R_NAME | R_COMMENT |",
